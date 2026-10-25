@@ -1,0 +1,11 @@
+[Unit]
+Description=Update the serial2moon container images on request
+Documentation=https://github.com/Lukas-Heiligenbrunner/serial2moon
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+# Remove the request first so it can't re-trigger. Refuses while a print is active.
+ExecStartPre=/bin/rm -f /run/serial2moon/update
+ExecStart=/opt/serial2moon/update.sh apply

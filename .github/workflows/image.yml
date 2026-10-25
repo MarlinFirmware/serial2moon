@@ -16,23 +16,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
+      # The .img ships these exact versions (the minimum a fresh Pi starts with), saved under
+      # the floating tags that image/files/opt/serial2moon/compose.yml uses, so the Pi runs
+      # offline from first boot and HOST_UPDATE can later move each one forward. Bump the
+      # Mainsail/Moonraker pins here after testing a newer pair.
       - name: Pre-bake container images (arm64) as loadable tars
+        env:
+          S2M_IMAGE: ghcr.io/lukas-heiligenbrunner/serial2moon
+          MOONRAKER_IMAGE: mkuf/moonraker
+          MOONRAKER_PIN: v0.11.0-4-gb559b9a
+          MAINSAIL_IMAGE: ghcr.io/mainsail-crew/mainsail
+          MAINSAIL_PIN: v2.19.0
         run: |
           set -euo pipefail
-          mkdir -p image/files/opt/serial2moon/images
-          # serial2moon: cross-compile arm64 via the Dockerfile, export a docker-loadable tar.
-          docker buildx build --platform linux/arm64 -f Dockerfile \
-            -t serial2moon:bundled \
-            -o type=docker,dest=image/files/opt/serial2moon/images/serial2moon.tar .
-          # Upstream images: pull the arm64 variant and save.
-          docker pull --platform linux/arm64 mkuf/moonraker:latest
-          # Mainsail: the `v2` tag the stack's compose.yml uses (`latest` is the 8080 variant).
-          docker pull --platform linux/arm64 ghcr.io/mainsail-crew/mainsail:v2
-          docker save mkuf/moonraker:latest        -o image/files/opt/serial2moon/images/moonraker.tar
-          docker save ghcr.io/mainsail-crew/mainsail:v2 -o image/files/opt/serial2moon/images/mainsail.tar
+          out=image/files/opt/serial2moon/images
+          mkdir -p "$out"
+          # serial2moon: the image the docker workflow published for this release (semver tag
+          # without the "v"), or the default branch's for a manual run. Wait for it to appear.
+          if [ "${{ github.event_name }}" = release ]; then s2m_pin=${GITHUB_REF_NAME#v}; else s2m_pin=latest; fi
+          for i in $(seq 60); do
+            docker buildx imagetools inspect "$S2M_IMAGE:$s2m_pin" >/dev/null 2>&1 && break
+            [ "$i" = 60 ] && { echo "::error::$S2M_IMAGE:$s2m_pin was not published"; exit 1; }
+            sleep 30
+          done
+          : > "$out/digests.txt"
+          bake() { # <image> <pinned tag> <floating tag the compose file uses> <tar name>
+            docker pull --platform linux/arm64 "$1:$2"
+            docker tag "$1:$2" "$1:$3"
+            # docker load drops registry digests; record them so update.sh can compare.
+            echo "$1:$3 $(docker image inspect --format '{{.Id}}' "$1:$2") $(docker image inspect --format '{{index .RepoDigests 0}}' "$1:$2" | sed 's/.*@//')" >> "$out/digests.txt"
+            docker save "$1:$3" -o "$out/$4.tar"
+          }
+          bake "$S2M_IMAGE" "$s2m_pin" stable serial2moon
+          bake "$MOONRAKER_IMAGE" "$MOONRAKER_PIN" latest moonraker
+          # Mainsail's `latest` is its unprivileged variant (nginx on 8080); the stack uses `v2`.
+          bake "$MAINSAIL_IMAGE" "$MAINSAIL_PIN" v2 mainsail
+          cat "$out/digests.txt"
 
       - name: Bake Raspberry Pi OS image
         id: build

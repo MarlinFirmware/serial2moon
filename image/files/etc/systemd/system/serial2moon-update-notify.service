@@ -1,0 +1,12 @@
+[Unit]
+Description=Announce available serial2moon updates once at boot (installs nothing)
+Documentation=https://github.com/Lukas-Heiligenbrunner/serial2moon
+After=serial2moon.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/serial2moon/update.sh check --quiet
+
+[Install]
+WantedBy=multi-user.target

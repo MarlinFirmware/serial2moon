@@ -16,7 +16,9 @@ x-logging: &default-logging
 
 services:
   serial2moon:
-    image: serial2moon:bundled
+    # Published by the project's docker workflow; `stable` follows releases. The .img ships a
+    # pinned copy under this tag, and HOST_UPDATE pulls newer ones.
+    image: ghcr.io/lukas-heiligenbrunner/serial2moon:stable
     # Mainsail shows Klipper's printer.info.hostname (this container's hostname) as the
     # printer name; default it to the Pi's hostname (set by start.sh) vs the container id.
     hostname: ${PRINTER_NAME:-serial2moon}

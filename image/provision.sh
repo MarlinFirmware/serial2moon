@@ -9,7 +9,7 @@ SRC="$(cd "$(dirname "$0")/.." && pwd)"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl
+apt-get install -y --no-install-recommends ca-certificates curl python3
 
 # Docker Engine + compose plugin (convenience script picks the right arch/repo).
 curl -fsSL https://get.docker.com | sh
@@ -45,7 +45,7 @@ install -d /opt/serial2moon
 cp -r "$SRC/image/files/opt/serial2moon/." /opt/serial2moon/
 cp -r "$SRC/docker" /opt/serial2moon/docker
 cp "$SRC/README.md" "$SRC/.env.example" /opt/serial2moon/  # served by Moonraker (see compose.yml)
-chmod +x /opt/serial2moon/start.sh
+chmod +x /opt/serial2moon/start.sh /opt/serial2moon/update.sh
 
 # serial2moon's settings file is created automatically in Moonraker's config dir on first
 # run and edited from Mainsail (Configuration Files) — nothing to place here.
@@ -68,6 +68,18 @@ for unit in serial2moon-reboot.path serial2moon-reboot.service \
 done
 enable_unit serial2moon-reboot.path
 enable_unit serial2moon-poweroff.path
+
+# Updates (always user-initiated): HOST_UPDATE_CHECK / HOST_UPDATE drop update-check /
+# update requests that these units hand to update.sh. A boot-time check only announces
+# available updates in the Mainsail console; it never installs anything.
+for unit in serial2moon-update.path serial2moon-update.service \
+    serial2moon-update-check.path serial2moon-update-check.service \
+    serial2moon-update-notify.service; do
+    cp "$SRC/image/files/etc/systemd/system/$unit" "/etc/systemd/system/$unit"
+done
+enable_unit serial2moon-update.path
+enable_unit serial2moon-update-check.path
+enable_unit serial2moon-update-notify.service
 
 # Enable SSH for headless debugging. The `ssh` flag on the boot partition is the canonical
 # Raspberry Pi OS way to start sshd at boot; we also enable the unit directly.

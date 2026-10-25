@@ -1,0 +1,11 @@
+[Unit]
+Description=Watch for a serial2moon update request
+Documentation=https://github.com/Lukas-Heiligenbrunner/serial2moon
+
+[Path]
+# serial2moon (in its container) drops this file when the HOST_UPDATE macro runs.
+PathExists=/run/serial2moon/update
+Unit=serial2moon-update.service
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Check for newer serial2moon container images on request
+Documentation=https://github.com/Lukas-Heiligenbrunner/serial2moon
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=/bin/rm -f /run/serial2moon/update-check
+ExecStart=/opt/serial2moon/update.sh check

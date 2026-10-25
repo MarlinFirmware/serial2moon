@@ -48,20 +48,38 @@ Targets **arm64** (Pi 3 / 4 / 5 / Zero 2 W).
 
 ## Updating
 
-The serial2moon image is baked into the `.img` (it isn't pulled from a registry), so to
-update, **re-flash the latest released `.img`**.
+Updates only install when you ask. Two macros (next to `HOST_REBOOT`) handle them:
+
+- **`HOST_UPDATE_CHECK`** asks the registries whether serial2moon, Moonraker or Mainsail have
+  a newer version and reports in the Mainsail console. It changes nothing. The same check runs
+  once at boot, and posts a note only when something is newer.
+- **`HOST_UPDATE`** downloads the newer images and restarts just those containers; Mainsail
+  reconnects by itself. It refuses while a print is running or paused.
+
+Both need internet access. Progress and results show in the console; the full output is in
+the journal (`journalctl -u 'serial2moon-update*'`). Re-flashing a newer `.img` also works.
+
+The `.img` ships pinned versions (the minimum a fresh Pi starts with): the serial2moon
+release it was built for, Moonraker `v0.11.0-4-gb559b9a`, and Mainsail `v2.19.0`. Updates move
+each one forward along the tags in `files/opt/serial2moon/compose.yml`: serial2moon
+`stable` (follows releases), Moonraker `latest`, Mainsail `v2`.
 
 ## How it's built
 
 `../.github/workflows/image.yml` runs on a published release:
 
-1. Builds the arm64 serial2moon image via the multi-arch `Dockerfile` (cross-compiled in
-   the builder stage) and saves it + Moonraker + Mainsail as `*.tar` into
-   `files/opt/serial2moon/images/` (so the Pi loads them offline at first boot).
+1. Waits for the docker workflow to publish this release's serial2moon image, pulls it plus
+   the pinned Moonraker and Mainsail (arm64), tags each with the floating tag the compose file
+   uses, and saves them as `*.tar` into `files/opt/serial2moon/images/` (so the Pi loads them
+   offline at first boot). Their registry digests go in `images/digests.txt` for the update
+   check, since `docker load` drops them.
 2. Uses [`pguyot/arm-runner-action`](https://github.com/pguyot/arm-runner-action) to run
    `provision.sh` inside a Raspberry Pi OS image (installs Docker, disables ModemManager,
-   installs the stack + `serial2moon.service`).
+   installs the stack, `serial2moon.service` and the host-control units).
 3. Compresses and attaches `serial2moon-rpi-arm64.img.xz` to the release.
+
+To ship newer Moonraker/Mainsail versions in the image, test them, then bump `MOONRAKER_PIN`
+and `MAINSAIL_PIN` in the workflow.
 
 A udev rule (`files/etc/udev/rules.d/99-serial2moon-latency.rules`) drops the USB-serial
 latency timer to 1 ms so dense G-code (curves) keeps the printer's planner fed. It applies
@@ -72,9 +90,11 @@ unaffected.
 
 - `provision.sh` — runs inside the image at build time.
 - `files/opt/serial2moon/` — the stack: `compose.yml`, `start.sh`
-  (boot launcher), and `images/` (baked container tars).
+  (boot launcher), `update.sh` (update check/apply), and `images/` (baked container tars).
 - `serial2moon.conf` — created in Moonraker's config dir on first run, edited via Mainsail.
 - `files/etc/systemd/system/serial2moon.service` — starts the stack at boot.
+- `files/etc/systemd/system/serial2moon-{reboot,poweroff,update,update-check}.*` — act on
+  the HOST_* macros' request files; `serial2moon-update-notify.service` is the boot check.
 
 ## Build locally
 
@@ -82,11 +102,15 @@ You don't need CI. On an x86-64 Linux box with Docker + buildx:
 
 ```bash
 mkdir -p image/files/opt/serial2moon/images
-# arm64 serial2moon image -> loadable tar (cross-compiled inside the Dockerfile)
-docker buildx build --platform linux/arm64 -f Dockerfile -t serial2moon:bundled \
+# arm64 serial2moon image from source, saved under the tag the Pi's compose.yml uses
+docker buildx build --platform linux/arm64 -f Dockerfile -t ghcr.io/lukas-heiligenbrunner/serial2moon:stable \
   -o type=docker,dest=image/files/opt/serial2moon/images/serial2moon.tar .
-docker pull --platform linux/arm64 mkuf/moonraker:latest && docker save mkuf/moonraker:latest -o image/files/opt/serial2moon/images/moonraker.tar
-docker pull --platform linux/arm64 ghcr.io/mainsail-crew/mainsail:v2 && docker save ghcr.io/mainsail-crew/mainsail:v2 -o image/files/opt/serial2moon/images/mainsail.tar
+docker pull --platform linux/arm64 mkuf/moonraker:v0.11.0-4-gb559b9a && docker tag mkuf/moonraker:v0.11.0-4-gb559b9a mkuf/moonraker:latest
+docker save mkuf/moonraker:latest -o image/files/opt/serial2moon/images/moonraker.tar
+docker pull --platform linux/arm64 ghcr.io/mainsail-crew/mainsail:v2.19.0 && docker tag ghcr.io/mainsail-crew/mainsail:v2.19.0 ghcr.io/mainsail-crew/mainsail:v2
+docker save ghcr.io/mainsail-crew/mainsail:v2 -o image/files/opt/serial2moon/images/mainsail.tar
 # then run pguyot/arm-runner-action's CLI, or replicate provision.sh against a mounted Pi OS image.
 ```
+A locally built serial2moon image has no registry digest, so `HOST_UPDATE_CHECK` will list it
+as updatable until it is replaced by a published one.
 (The CI workflow is the supported path; local baking needs loop-mount/qemu privileges.)
