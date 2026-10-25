@@ -696,8 +696,13 @@ async fn reader<R: AsyncReadExt + Unpin>(
                     }
                     Line::Other(msg) => {
                         // Suppress M115 capability/firmware noise from the console (it's
-                        // parsed above and condensed into one "// connected" line).
-                        if msg.starts_with("Cap:") || msg.contains("FIRMWARE_NAME:") {
+                        // parsed above and condensed into one "// connected" line), and the
+                        // rest of the replies to the bridge's own init commands (M115
+                        // geometry report, M503).
+                        if msg.starts_with("Cap:")
+                            || msg.contains("FIRMWARE_NAME:")
+                            || state.snapshot().klippy_state == KlippyState::Startup
+                        {
                             debug!(line = %msg, "printer output (suppressed)");
                         } else {
                             let _ = console.send(msg);
