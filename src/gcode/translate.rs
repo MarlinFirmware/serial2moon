@@ -10,7 +10,7 @@ use serde_json::{Map, Value};
 use tracing::{debug, info, warn};
 
 use crate::app::App;
-use crate::state::{KlippyState, PrinterState, sheet_macro_name};
+use crate::state::{HOST_MACROS, KlippyState, PrintState, PrinterState, sheet_macro_name};
 
 /// Run a (possibly multi-line) script to completion.
 pub async fn execute(app: &App, script: &str) -> Result<()> {
@@ -55,9 +55,8 @@ async fn execute_line(app: &App, line: &str) -> Result<()> {
         "RESTART" => app.serial.restart().await?,
         "FIRMWARE_RESTART" => app.serial.firmware_restart().await?,
 
-        // ---- Host power control (handled by a host-side watcher; see config) ----
-        "HOST_REBOOT" => host_control(app, "reboot").await?,
-        "HOST_SHUTDOWN" => host_control(app, "shutdown").await?,
+        // ---- Host control: reboot, shutdown, updates (a host-side watcher acts; see config) ----
+        name if HOST_MACROS.iter().any(|(m, _, _)| *m == name) => host_control(app, name).await?,
 
         // ---- Console help ----
         "HELP" => help(app),
@@ -203,8 +202,9 @@ pub fn help_map(state: &PrinterState) -> Map<String, Value> {
         );
     }
     if state.host_control {
-        m.insert("HOST_REBOOT".into(), "Reboot the host computer".into());
-        m.insert("HOST_SHUTDOWN".into(), "Shut down the host computer".into());
+        for (name, _, help) in HOST_MACROS {
+            m.insert((*name).into(), (*help).into());
+        }
     }
     m
 }
@@ -252,22 +252,37 @@ fn respond_line(line: &str) -> String {
     format!("{prefix} {msg}")
 }
 
-/// Request a host power action by dropping a marker file (`reboot`/`shutdown`) into the
-/// configured host-control dir, where a privileged host-side systemd path unit picks it up
-/// and runs `systemctl reboot`/`poweroff`. serial2moon itself is unprivileged and never
+/// Request a host action (`HOST_MACROS`) by dropping a marker file into the configured
+/// host-control dir, where a privileged host-side systemd path unit picks it up (reboot,
+/// power off, check for or apply updates). serial2moon itself is unprivileged and never
 /// touches the host directly.
-async fn host_control(app: &App, action: &str) -> Result<()> {
+async fn host_control(app: &App, name: &str) -> Result<()> {
     let Some(dir) = &app.config.host_control_dir else {
         let _ = app
             .console
-            .send("!! Host power control is not enabled on this install".into());
+            .send("!! Host control is not enabled on this install".into());
         bail!("host control requested but S2M_HOST_CONTROL_DIR is unset");
     };
+    let Some((_, action, _)) = HOST_MACROS.iter().find(|(m, _, _)| *m == name) else {
+        bail!("unknown host macro {name}");
+    };
+    // Updating restarts the containers, which would kill a running print.
+    if *action == "update"
+        && matches!(
+            app.state.snapshot().print_state,
+            PrintState::Printing | PrintState::Paused
+        )
+    {
+        let _ = app
+            .console
+            .send("!! Not updating while a print is running or paused".into());
+        bail!("update refused: a print is active");
+    }
     let path = dir.join(action);
     tokio::fs::write(&path, b"1")
         .await
         .with_context(|| format!("writing host-control request {}", path.display()))?;
-    info!(action, path = %path.display(), "host power request written");
+    info!(action, path = %path.display(), "host request written");
     let _ = app.console.send(format!("// Host {action} requested"));
     Ok(())
 }
@@ -488,7 +503,13 @@ mod tests {
     fn help_map_includes_sheet_and_host_macros() {
         let m = help_map(&state(vec![(1, "Smooth PEI".into())], true));
         assert!(m.contains_key("SHEET_SMOOTH_PEI"));
-        assert!(m.contains_key("HOST_REBOOT"));
-        assert!(m.contains_key("HOST_SHUTDOWN"));
+        for name in [
+            "HOST_REBOOT",
+            "HOST_SHUTDOWN",
+            "HOST_UPDATE_CHECK",
+            "HOST_UPDATE",
+        ] {
+            assert!(m.contains_key(name), "{name} missing");
+        }
     }
 }

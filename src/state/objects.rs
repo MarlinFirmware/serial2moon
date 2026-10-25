@@ -61,6 +61,23 @@ pub struct Sheet {
     pub z: Option<f64>,
 }
 
+/// Host-control macros: (macro name, request file dropped in the host-control dir, help).
+/// A privileged host-side watcher acts on each request (see `S2M_HOST_CONTROL_DIR`).
+pub const HOST_MACROS: &[(&str, &str, &str)] = &[
+    ("HOST_REBOOT", "reboot", "Reboot the host computer"),
+    ("HOST_SHUTDOWN", "shutdown", "Shut down the host computer"),
+    (
+        "HOST_UPDATE_CHECK",
+        "update-check",
+        "Check for newer serial2moon, Moonraker and Mainsail versions",
+    ),
+    (
+        "HOST_UPDATE",
+        "update",
+        "Update serial2moon, Moonraker and Mainsail (refused while printing)",
+    ),
+];
+
 /// Which advertised limits the user set explicitly (see `PrinterState::pinned_limits`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PinnedLimits {
@@ -133,7 +150,7 @@ pub struct PrinterState {
     /// Steel-sheet profiles (auto-discovered via M850 and/or configured), exposed as macros.
     pub sheets: Vec<Sheet>,
     /// Whether host power control is available (a host-control dir is configured). When
-    /// true, the HOST_REBOOT / HOST_SHUTDOWN macros are exposed.
+    /// true, the host macros (`HOST_MACROS`) are exposed.
     pub host_control: bool,
 
     // MCU (the serial firmware) info + link stats, surfaced as the Klipper `mcu` object.
@@ -476,8 +493,9 @@ impl PrinterState {
         }
         // Host power-control macros (only when a host watcher is wired up).
         if self.host_control {
-            m.insert("gcode_macro HOST_REBOOT".into(), json!({}));
-            m.insert("gcode_macro HOST_SHUTDOWN".into(), json!({}));
+            for (name, _, _) in HOST_MACROS {
+                m.insert(format!("gcode_macro {name}"), json!({}));
+            }
         }
 
         m
@@ -518,8 +536,9 @@ impl PrinterState {
                 );
             }
             if self.host_control {
-                obj.insert("gcode_macro HOST_REBOOT".into(), json!({}));
-                obj.insert("gcode_macro HOST_SHUTDOWN".into(), json!({}));
+                for (name, _, _) in HOST_MACROS {
+                    obj.insert(format!("gcode_macro {name}"), json!({}));
+                }
             }
         }
         json!({
