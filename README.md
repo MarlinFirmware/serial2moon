@@ -119,7 +119,9 @@ editable `serial2moon.conf` shown next to `moonraker.conf` in Mainsail.
 | `--baud` / `S2M_BAUD` | autodetect | serial baud (probes + gates on `M115`) |
 | `--uds-path` / `S2M_UDS` | `/tmp/klippy_uds` | socket Moonraker connects to |
 | `--gcode-dir` / `S2M_GCODE_DIR` | `./gcodes` | gcode files (must match Moonraker) |
-| `--bed-size` / `S2M_BED_SIZE` | `220,220,250` | advertised X,Y,Z limits |
+| `--bed-size` / `S2M_BED_SIZE` | from printer, else `220,220,250` | advertised X,Y,Z limits (overrides the printer's M115 geometry report) |
+| `--max-velocity` / `S2M_MAX_VELOCITY` | from printer, else `300` | advertised max velocity (overrides `M203` X/Y) |
+| `--max-accel` / `S2M_MAX_ACCEL` | from printer, else `3000` | advertised max accel (overrides `M204 P`) |
 | `--config-file` / `S2M_CONFIG_FILE` | — | editable settings file; reported to Moonraker as the config file |
 | `--klipper-path` / `S2M_KLIPPER_PATH` | `/opt/serial2moon` | path Moonraker serves `config/` and `docs/` from |
 | `--extruder-max-temp` / `S2M_EXTRUDER_MAX_TEMP` | `300` | bounds the UI temp input |
