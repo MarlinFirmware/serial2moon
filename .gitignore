@@ -5,3 +5,4 @@
 /image/files/opt/serial2moon/images/.loaded
 **/docker-compose.override.yml
 .env
+.DS_Store
