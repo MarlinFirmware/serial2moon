@@ -53,14 +53,34 @@ A complete image with serial2moon + Moonraker + Mainsail pre-installed and start
 The printer is **autodetected** — no config needed in the common case. For tuning options
 and how host reboot/shutdown works, see [`image/README.md`](image/README.md).
 
-Targets **arm64** (Pi 3 / 4 / 5 / Zero 2 W). To update, re-flash the latest release.
+Targets **arm64** (Pi 3 / 4 / 5 / Zero 2 W). To update, run the **`HOST_UPDATE_CHECK`** and
+**`HOST_UPDATE`** macros in Mainsail (updates only ever install when you ask; see
+[`image/README.md`](image/README.md#updating)).
 
 ### 2. Docker Compose on an existing Pi / Linux host
 
-If you already run Docker, you can bring up the same stack yourself. A ready-made
-multi-arch image is published to `ghcr.io/lukas-heiligenbrunner/serial2moon`.
+If you already run Docker, one self-contained file brings up the whole stack from the
+published images (`ghcr.io/lukas-heiligenbrunner/serial2moon`, Moonraker, Mainsail). It
+needs Docker Compose v2.24 or newer.
 
-**Try it with the mock printer (no hardware):**
+```bash
+mkdir serial2moon && cd serial2moon
+curl -fsSLO https://raw.githubusercontent.com/Lukas-Heiligenbrunner/serial2moon/master/install/compose.yml
+docker compose up -d
+# Mainsail:  http://localhost:8088
+# Moonraker: http://localhost:7125
+```
+
+The USB printer is autodetected. Settings go in a `.env` file next to `compose.yml`
+(`S2M_SERIAL_PORT=/dev/serial/by-id/...`, `S2M_BAUD`, `MAINSAIL_PORT`, `PRINTER_NAME`; any
+`S2M_*` option works). The comments at the top of [`install/compose.yml`](install/compose.yml)
+list them. USB printers need a Linux host; Docker Desktop on macOS/Windows can't pass USB
+through. To drive a printer or simulator over the network instead, set `S2M_TRANSPORT=tcp`
+and `S2M_TCP_ADDR=<host>:<port>`.
+
+**Update** (not while printing): `docker compose pull && docker compose up -d`.
+
+**Try it with the mock printer (no hardware), from a clone:**
 
 ```bash
 git clone https://github.com/Lukas-Heiligenbrunner/serial2moon.git
@@ -71,24 +91,14 @@ docker compose up --build
 ```
 
 Upload a `.gcode` in Mainsail and print it — progress, pause/resume, and temperatures all
-work against the simulated printer.
+work against the simulated printer. This `compose.yml` builds serial2moon from source, for
+development; `compose.sim.yml` points it at the Marlin simulator instead (see Development).
 
-**Drive a real printer:** edit `compose.yml` — in the `serial2moon` service swap the mock
-`command:` for the commented `serial` block and pass your device, e.g.:
+#### Versions
 
-```yaml
-    command:
-      - "--transport=serial"
-      - "--serial-port=/dev/printer"
-      - "--uds-path=/opt/printer_data/run/klippy.sock"
-      - "--gcode-dir=/opt/printer_data/gcodes"
-    devices:
-      - "/dev/serial/by-id/usb-YOUR-PRINTER:/dev/printer"
-```
-
-Use a `/dev/serial/by-id/...` path so it survives USB re-enumeration. Omit the baud to
-autodetect. (The image in option 1 uses a production-tuned version of this same compose
-file at `image/files/opt/serial2moon/compose.yml`.)
+The stack follows Moonraker's and Mainsail's releases (`mkuf/moonraker:latest`, Mainsail
+`v2`). Tested with **Moonraker v0.11.0-4-gb559b9a** and **Mainsail v2.19.0** or newer; the
+Pi image ships exactly these.
 
 ### 3. Run the binary directly (advanced / development)
 
