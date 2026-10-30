@@ -60,12 +60,12 @@ Targets **arm64** (Pi 3 / 4 / 5 / Zero 2 W). To update, run the **`HOST_UPDATE_C
 ### 2. Docker Compose on an existing Pi / Linux host
 
 If you already run Docker, one self-contained file brings up the whole stack from the
-published images (`ghcr.io/lukas-heiligenbrunner/serial2moon`, Moonraker, Mainsail). It
+published images (`ghcr.io/marlinfirmware/serial2moon`, Moonraker, Mainsail). It
 needs Docker Compose v2.24 or newer.
 
 ```bash
 mkdir serial2moon && cd serial2moon
-curl -fsSLO https://raw.githubusercontent.com/Lukas-Heiligenbrunner/serial2moon/master/install/compose.yml
+curl -fsSLO https://raw.githubusercontent.com/MarlinFirmware/serial2moon/marlin-connector/install/compose.yml
 docker compose up -d
 # Mainsail:  http://localhost:8088
 # Moonraker: http://localhost:7125

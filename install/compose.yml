@@ -14,13 +14,13 @@
 #   MAINSAIL_PORT=80                           Mainsail's port (default 8088)
 #   MOONRAKER_PORT=7125                        Moonraker's port (default 7125)
 #   PRINTER_NAME=my-printer                    name shown in Mainsail
-#   S2M_IMAGE=ghcr.io/...:latest               another serial2moon image (e.g. the dev build)
+#   S2M_IMAGE=ghcr.io/...:tag                  another serial2moon image (default: this fork's marlin-connector build)
 #
 # USB printers need a Linux host (Docker Desktop on macOS/Windows can't pass USB through);
 # the TCP transport works everywhere.
 #
-# Updating: `docker compose pull && docker compose up -d` (not while printing). The tags
-# below follow releases; tested minimum versions are listed in the project README.
+# Updating: `docker compose pull && docker compose up -d` (not while printing). Moonraker and Mainsail tags
+# follow their releases; the serial2moon image follows this fork's marlin-connector branch.
 
 x-logging: &default-logging
   driver: json-file
@@ -30,7 +30,7 @@ x-logging: &default-logging
 
 services:
   serial2moon:
-    image: ${S2M_IMAGE:-ghcr.io/lukas-heiligenbrunner/serial2moon:stable}
+    image: ${S2M_IMAGE:-ghcr.io/marlinfirmware/serial2moon:marlin-connector}
     hostname: ${PRINTER_NAME:-serial2moon} # shown in Mainsail as the printer name
     depends_on:
       - moonraker # let Moonraker initialize the shared volumes first
