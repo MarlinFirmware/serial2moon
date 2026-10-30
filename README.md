@@ -15,6 +15,103 @@ Marlin G-code.
 
 Tested end-to-end on an **Original Prusa i3 MK3S** with real Moonraker + Mainsail.
 
+## Using it with Marlin (MarlinFirmware fork)
+
+This fork is where serial2moon is made to work with **plain Marlin** (not just Prusa firmware), and
+with the **Marlin simulator**. The work lives on the
+[`marlin-connector`](https://github.com/MarlinFirmware/serial2moon/tree/marlin-connector) branch
+while it goes upstream as separate pull requests
+([#3](https://github.com/Lukas-Heiligenbrunner/serial2moon/pull/3),
+[#4](https://github.com/Lukas-Heiligenbrunner/serial2moon/pull/4),
+[#5](https://github.com/Lukas-Heiligenbrunner/serial2moon/pull/5),
+[#6](https://github.com/Lukas-Heiligenbrunner/serial2moon/pull/6),
+[#7](https://github.com/Lukas-Heiligenbrunner/serial2moon/pull/7)).
+**Use the `marlin-connector` branch and its image for Marlin**; this `master` branch is upstream's
+code plus this note. When those PRs are released, use upstream's `:stable` image instead.
+
+What `marlin-connector` adds over upstream:
+
+- **TCP transport** (`--transport tcp`, `S2M_TCP_ADDR`) for the Marlin simulator and network serial bridges.
+- **Printer limits from the printer**: travel limits from the `M115` geometry report and speed /
+  acceleration from `M503`, instead of command-line defaults. `--bed-size`, `--max-velocity` and
+  `--max-accel` still override.
+- **Prusa-only commands are skipped on other firmware** (`M601`/`M602`/`M603`, `M79`, `M850`).
+- The firmware name is reported as **`app`** in `printer.info` (`Marlin`, `Prusa-Firmware`, ...).
+- `RESPOND` prints to the console; a real config file and Klipper path are reported to Moonraker
+  (no more missing-folder warnings).
+
+### 1. Set up Marlin (optional but recommended)
+
+No firmware change is required. These options make Mainsail more accurate. From a Marlin checkout:
+
+```bash
+buildroot/bin/opt_enable EMERGENCY_PARSER ADVANCED_OK AUTO_REPORT_POSITION AUTO_REPORT_REAL_POSITION \
+  REPORT_FAN_CHANGE M114_REALTIME M115_GEOMETRY_REPORT CANCEL_OBJECTS SET_PROGRESS_MANUALLY
+buildroot/bin/opt_set BUFSIZE 8
+```
+
+- `EMERGENCY_PARSER` makes `M112` (the emergency stop button) work while a print streams.
+- `M115_GEOMETRY_REPORT` lets serial2moon read the machine's travel limits at connect.
+- `ADVANCED_OK` and a larger `BUFSIZE` let the host keep more lines in flight.
+- `HOST_ACTION_COMMANDS` and `HOST_PROMPT_SUPPORT` (on by default) pass pause, resume, cancel and
+  filament prompts from the printer's LCD to Mainsail.
+- Leave `AUTO_REPORT_FANS` **off**: it reports fan tachometer RPM, not fan speed, and needs a tach pin.
+
+### 2. Run the stack with Docker
+
+```bash
+mkdir serial2moon && cd serial2moon
+curl -fsSLO https://raw.githubusercontent.com/MarlinFirmware/serial2moon/marlin-connector/install/compose.yml
+docker compose up -d
+# Mainsail:  http://localhost:8088      Moonraker: http://localhost:7125
+```
+
+A USB printer is autodetected; this needs a **Linux** host (Docker Desktop on macOS/Windows can't pass
+USB through). Settings go in a `.env` file next to `compose.yml`; the comments at the top of the file
+list them (`S2M_SERIAL_PORT`, `S2M_BAUD`, `MAINSAIL_PORT`, `PRINTER_NAME`, `S2M_IMAGE`, any `S2M_*`).
+Needs Docker Compose v2.24 or newer. Update with `docker compose pull && docker compose up -d`, never
+during a print. The image is `ghcr.io/marlinfirmware/serial2moon:marlin-connector`.
+
+The same stack, plus an OctoPrint file, is also in the Marlin repository under
+`buildroot/share/hosts/` (`mainsail.yml`, `octoprint.yml`), once MarlinFirmware/Marlin#28759 is merged.
+
+The ready-made Raspberry Pi image from upstream's Releases page still works with Marlin, but it
+carries upstream's serial2moon, so it lacks the changes above until they are released.
+
+### 3. Try it with the Marlin simulator (no printer)
+
+1. Build the simulator from the *Simulator* example configuration and **enable `SERIAL_PORT_2`**
+   (`buildroot/bin/opt_enable SERIAL_PORT_2`). Without it the simulator's G-code socket accepts
+   connections but Marlin never reads them. Add the options from step 1.
+2. Run it: `MarlinSimulator --serial-port 8099`.
+3. Point the stack at it, in `.env` next to `compose.yml`:
+
+   ```
+   S2M_TRANSPORT=tcp
+   S2M_TCP_ADDR=host.docker.internal:8099
+   ```
+
+   then `docker compose up -d`, and open http://localhost:8088.
+
+The simulator's socket serves **one client at a time**, and a new connection *replaces* the old one.
+Give each host (serial2moon, OctoPrint, ...) its own simulator with its own `--serial-port`. The
+simulator runs at real time by default, so a `G28` can take minutes; raise the speed with
+`curl -X POST localhost:<agent-port>/kernel/control -d '{"realtime_scale":30}'` (start the simulator
+with `--agent-port <n>`).
+
+### Limits with Marlin
+
+- Marlin has no command that reports which axes are homed, so the web UI's homed axes are inferred
+  from the `G28` commands serial2moon sent.
+- Klipper-only features (input shaper calibration, `BED_MESH_CALIBRATE`, Klipper macros) are accepted
+  but don't map to Marlin. Use Marlin's G-codes in the console.
+- Mainsail labels the backend "Klipper" in its connection screens. That text is Mainsail's.
+- Tested with the Marlin simulator and Prusa firmware; not yet with other real printers over USB.
+
+More: the Marlin repository's `buildroot/skills/marlin-hosts-in-docker` and
+`buildroot/skills/marlin-mainsail-connector` describe running Mainsail and OctoPrint against the
+simulator.
+
 ## What works
 
 - Live temperatures, fan, and toolhead position / homed axes (tracked from the G-code we
